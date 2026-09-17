@@ -15,7 +15,7 @@ jobs:
     steps:
       - name: Calculate weekly throughput
         env:
-          GH_TOKEN: ${{ github.token }}
+            GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           set -euo pipefail
 
