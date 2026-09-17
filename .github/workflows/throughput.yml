@@ -1,0 +1,41 @@
+name: Weekly Throughput
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  issues: read
+  contents: read
+
+jobs:
+  calculate-throughput:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Calculate weekly throughput
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          end_date="$(date -u +%Y-%m-%d)"
+          start_date="$(date -u -d '7 days ago' +%Y-%m-%d)"
+          repository="${{ github.repository }}"
+
+          closed_issues="$(gh issue list \
+            --repo "$repository" \
+            --state closed \
+            --search "closed:>=$start_date" \
+            --limit 1000 \
+            --json number,title,closedAt \
+            --jq 'length')"
+
+          {
+            echo "# Weekly Throughput"
+            echo
+            echo "- Period: **$start_date** to **$end_date** (UTC)"
+            echo "- Closed issues: **$closed_issues**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Weekly throughput: $closed_issues closed issues ($start_date to $end_date UTC)"
