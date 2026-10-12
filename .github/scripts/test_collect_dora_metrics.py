@@ -1,10 +1,25 @@
 import unittest
 from datetime import datetime, timezone
 
-from collect_dora_metrics import calculate_metrics
+from collect_dora_metrics import calculate_metrics, make_dashboard, make_report
 
 
 class CalculateMetricsTests(unittest.TestCase):
+    def test_empty_data_is_reported_without_failing(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 8, tzinfo=timezone.utc)
+
+        metrics = calculate_metrics([], start, end)
+        report = make_report("owner/repo", start, end, metrics)
+        dashboard = make_dashboard("owner/repo", start, end, metrics)
+
+        self.assertEqual(metrics["deployment_frequency"]["value"], 0)
+        self.assertIsNone(metrics["lead_time_for_changes"]["value_minutes"])
+        self.assertIsNone(metrics["change_failure_rate"]["value_percent"])
+        self.assertIsNone(metrics["mttr"]["value_minutes"])
+        self.assertIn("N/A", report)
+        self.assertIn("N/A", dashboard)
+
     def test_calculates_all_four_metrics(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         end = datetime(2026, 1, 8, tzinfo=timezone.utc)
