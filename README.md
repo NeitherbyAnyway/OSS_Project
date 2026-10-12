@@ -16,10 +16,29 @@
 - git/github/github desktop/vscode
 - 
 
-## Weekly Throughput
+## DORA Metrics Automation
 
-`.github/workflows/throughput.yml` runs every Sunday at 00:00 UTC and counts
-issues closed during the previous seven days. The result is published in the
-GitHub Actions job summary and can also be run manually with **Run workflow**.
+`.github/workflows/throughput.yml` runs every Sunday at 00:00 UTC and can also
+be started manually with **Run workflow**. It collects deployment data from the
+GitHub Deployments API, calculates the four DORA metrics for the previous seven
+days, and publishes a Markdown report in the Actions job summary. It also keeps
+the weekly closed-issue count.
+
+The workflow uploads `dora-metrics.json`, `weekly-report.md`, and
+`dora-dashboard.html` as the `weekly-dora-report` artifact. Download the artifact
+from the workflow run to inspect the raw data, report, or standalone dashboard.
+The built-in `github.token` is granted read-only access to deployments, issues,
+and repository contents; no personal access token secret is required.
+
+### Metric definitions
+
+- **Deployment frequency:** successful deployments created during the reporting week.
+- **Lead time for changes:** time from the deployed commit's committer timestamp to its successful deployment status. This uses the deployment's SHA as a consistent commit-level proxy.
+- **Change failure rate:** deployments whose latest status is `failure` or `error`, divided by completed (`success`, `failure`, or `error`) deployments created during the reporting week.
+- **MTTR:** average time from a `failure` or `error` status to the next `success` status in the same environment. The workflow checks up to 30 days of deployment history for recovery context.
+
+If a repository has no GitHub deployment records, deployment-based metrics are
+reported as `N/A` or zero rather than inferred from issue closures. Configure
+deployments in the repository's CI/CD workflow for meaningful DORA results.
 
 

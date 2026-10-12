@@ -8,14 +8,30 @@ on:
 permissions:
   issues: read
   contents: read
+  deployments: read
 
 jobs:
-  calculate-throughput:
+  calculate-dora-metrics:
     runs-on: windows-latest
     steps:
-      - name: Calculate weekly throughput
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Collect DORA metrics
         env:
-            GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+        run: python .github/scripts/collect_dora_metrics.py
+
+      - name: Calculate weekly issue throughput
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           $now = [DateTime]::UtcNow
           $endDate = $now.ToString('yyyy-MM-dd')
@@ -37,3 +53,10 @@ jobs:
           ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
           Write-Output "Weekly throughput: $closedIssues closed issues ($startDate to $endDate UTC)"
+
+      - name: Upload weekly report and dashboard
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-dora-report
+          path: reports/
+          if-no-files-found: error
