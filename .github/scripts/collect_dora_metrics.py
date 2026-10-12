@@ -242,8 +242,10 @@ def collect_release_proxy_data(api_url, repository, token, period_start, period_
             continue
         if not period_start <= parse_time(published_at) < period_end:
             continue
-        sha = quote(release["tag_name"], safe="")
-        commit_date = get_commit_date(api_url, repository, sha, token)
+        try:
+            commit_date = get_commit_date(api_url, repository, release.get("target_commitish") or release["tag_name"], token)
+        except Exception:
+            commit_date = None
         releases.append(
             {
                 "tag_name": release["tag_name"],
@@ -259,11 +261,34 @@ def collect_release_proxy_data(api_url, repository, token, period_start, period_
     return releases, incidents
 
 
+def count_closed_issues(api_url, repository, token, period_start, period_end):
+    closed_issues = 0
+    for issue in iter_api_items(api_url, repository, "issues?state=closed", token):
+        if "pull_request" in issue:
+            continue
+        closed_at = issue.get("closed_at")
+        if not closed_at:
+            continue
+        if period_start <= parse_time(closed_at) < period_end:
+            closed_issues += 1
+    return closed_issues
+
+
 def display(value, suffix=""):
     return "N/A" if value is None else f"{value:g}{suffix}"
 
 
-def make_report(repository, period_start, period_end, metrics, source):
+def format_metric_value(label, value):
+    if value is None:
+        return "N/A"
+    if label == "Change failure rate":
+        return f"{value:g}%"
+    if label == "Lead time for changes" or label == "MTTR":
+        return f"{value:g} min"
+    return str(value)
+
+
+def make_report(repository, period_start, period_end, metrics, source="github_releases_proxy", closed_issues=0):
     lead = metrics["lead_time_for_changes"]
     failure = metrics["change_failure_rate"]
     mttr = metrics["mttr"]
@@ -290,23 +315,51 @@ def make_report(repository, period_start, period_end, metrics, source):
             "- MTTR is the average time from a `failure`/`error` status to the next `success` status in the same environment. Recovery context is limited to 30 days." if source == "github_deployments" else "- MTTR is the average time from a `dora-failure` Issue's creation to closure; open incidents created in the period are counted separately.",
             "- Metrics without eligible deployment data are reported as `N/A`; these are deployment-based measures, not issue-based proxies.",
             "",
+            "## Weekly Throughput",
+            "",
+            f"- Period: **{period_start:%Y-%m-%d} to {period_end:%Y-%m-%d} UTC**",
+            f"- Closed issues: **{closed_issues}**",
+            "",
         ]
     )
 
 
-def make_dashboard(repository, period_start, period_end, metrics, source):
+def make_dashboard(repository, period_start, period_end, metrics, source="github_releases_proxy", closed_issues=0):
     lead = metrics["lead_time_for_changes"]
     failure = metrics["change_failure_rate"]
     mttr = metrics["mttr"]
-    cards = [
-        ("Deployment frequency", str(metrics["deployment_frequency"]["value"]), "successful deployments / week"),
-        ("Lead time for changes", display(lead["value_minutes"], " min"), f"{lead['measured_deployments']} measured deployments"),
-        ("Change failure rate", display(failure["value_percent"], "%"), f"{failure['failed_deployments']} failed / {failure['completed_deployments']} completed"),
-        ("MTTR", display(mttr["value_minutes"], " min"), f"{mttr['recovered_incidents']} recovered / {mttr['open_incidents']} open"),
+    chart_labels = [
+        "Deployment frequency",
+        "Lead time for changes",
+        "Change failure rate",
+        "MTTR",
+    ]
+    chart_values = [
+        metrics["deployment_frequency"]["value"],
+        lead["value_minutes"],
+        failure["value_percent"],
+        mttr["value_minutes"],
+    ]
+    labels = [
+        "Deployment frequency",
+        "Lead time for changes",
+        "Change failure rate",
+        "MTTR",
+    ]
+    series = [
+        str(metrics["deployment_frequency"]["value"]),
+        display(lead["value_minutes"], " min"),
+        display(failure["value_percent"], "%"),
+        display(mttr["value_minutes"], " min"),
     ]
     card_html = "\n".join(
         f'<article><h2>{html.escape(title)}</h2><strong>{html.escape(value)}</strong><p>{html.escape(detail)}</p></article>'
-        for title, value, detail in cards
+        for title, value, detail in [
+            ("Deployment frequency", str(metrics["deployment_frequency"]["value"]), "successful deployments / week"),
+            ("Lead time for changes", display(lead["value_minutes"], " min"), f"{lead['measured_deployments']} measured deployments"),
+            ("Change failure rate", display(failure["value_percent"], "%"), f"{failure['failed_deployments']} failed / {failure['completed_deployments']} completed"),
+            ("MTTR", display(mttr["value_minutes"], " min"), f"{mttr['recovered_incidents']} recovered / {mttr['open_incidents']} open"),
+        ]
     )
     return f"""<!doctype html>
 <html lang="en">
@@ -314,25 +367,62 @@ def make_dashboard(repository, period_start, period_end, metrics, source):
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Weekly DORA Metrics</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root {{ color-scheme: light; font-family: Georgia, 'Times New Roman', serif; background: #f4f2eb; color: #182b28; }}
-    body {{ max-width: 1040px; margin: 0 auto; padding: 48px 24px; }}
-    header {{ border-bottom: 2px solid #182b28; padding-bottom: 24px; }}
+    :root {{ color-scheme: light; font-family: Georgia, 'Times New Roman', serif; background: #0f1720; color: #edf5f3; }}
+    body {{ max-width: 1100px; margin: 0 auto; padding: 40px 24px; background: #0f1720; }}
+    header {{ border-bottom: 2px solid #c9d9d4; padding-bottom: 20px; margin-bottom: 20px; }}
     h1 {{ font-size: 2.4rem; margin: 0 0 8px; }}
-    header p {{ font-family: 'Segoe UI', sans-serif; color: #4e625c; margin: 0; }}
-    main {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; padding: 28px 0; }}
-    article {{ background: #fff; border-top: 5px solid #df6b45; padding: 20px; min-height: 150px; }}
-    article:nth-child(even) {{ border-color: #328378; }}
-    h2 {{ font: 600 0.95rem 'Segoe UI', sans-serif; margin: 0 0 24px; }}
+    header p {{ color: #b9c7c2; margin: 0; }}
+    main {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; padding-bottom: 24px; }}
+    article {{ background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.12); border-top: 5px solid #df6b45; padding: 20px; min-height: 150px; }}
+    article:nth-child(even) {{ border-top-color: #328378; }}
+    h2 {{ font: 600 0.95rem 'Segoe UI', sans-serif; margin: 0 0 24px; color: #f2f7f5; }}
     strong {{ display: block; font-size: 2rem; overflow-wrap: anywhere; }}
-    article p, footer {{ font: 0.85rem 'Segoe UI', sans-serif; color: #4e625c; }}
-    footer {{ border-top: 1px solid #b8c1b9; padding-top: 16px; line-height: 1.6; }}
+    article p, footer {{ font: 0.85rem 'Segoe UI', sans-serif; color: #d3ddd9; }}
+    .chart-card {{ margin-top: 12px; background: rgba(255,255,255,0.03); padding: 18px; border: 1px solid rgba(255,255,255,0.12); }}
+    canvas {{ max-height: 350px; }}
   </style>
 </head>
 <body>
   <header><h1>Weekly DORA Metrics</h1><p>{html.escape(repository)} · {period_start:%Y-%m-%d} to {period_end:%Y-%m-%d} UTC</p></header>
   <main>{card_html}</main>
-    <footer>{'GitHub Deployments API measurements.' if source == 'github_deployments' else 'Release-based deployment proxy. Record incidents as Issues labeled dora-failure and release:&lt;tag&gt;.'} Lead time is commit-to-release/deployment. No eligible data is shown as N/A.</footer>
+  <div class="chart-card">
+    <canvas id="doraChart"></canvas>
+  </div>
+  <footer>{'GitHub Deployments API measurements.' if source == 'github_deployments' else 'Release-based deployment proxy. Record incidents as Issues labeled dora-failure and release:&lt;tag&gt;.'} Weekly throughput is shown alongside the DORA metrics. No eligible data is shown as N/A.</footer>
+  <script>
+    const labels = {json.dumps(chart_labels)};
+    const values = {json.dumps(chart_values)};
+    new Chart(document.getElementById('doraChart'), {{
+      type: 'bar',
+      data: {{
+        labels: labels,
+        datasets: [{{
+          label: 'Metric value',
+          data: values,
+          backgroundColor: ['#4ecdc4', '#f7b267', '#ff6b6b', '#7bdff2'],
+          borderRadius: 6
+        }}]
+      }},
+      options: {{
+        responsive: true,
+        scales: {{
+          y: {{
+            beginAtZero: false,
+            ticks: {{
+              callback: function(value) {{
+                return value + (labels[2] === 'Change failure rate' ? '%' : '');
+              }}
+            }}
+          }}
+        }},
+        plugins: {{
+          legend: {{ display: false }}
+        }}
+      }}
+    }});
+  </script>
 </body>
 </html>
 """
@@ -357,6 +447,7 @@ def main():
             api_url, repository, token, period_start, period_end
         )
         metrics = calculate_release_proxy_metrics(releases, incidents, period_start, period_end)
+    closed_issues = count_closed_issues(api_url, repository, token, period_start, period_end)
     output = Path("reports")
     output.mkdir(parents=True, exist_ok=True)
 
@@ -366,12 +457,13 @@ def main():
         "data_source": source,
         "generated_at": period_end.isoformat(),
         "period": {"start": period_start.isoformat(), "end": period_end.isoformat()},
+        "weekly_throughput": {"closed_issues": closed_issues},
         "metrics": metrics,
     }
     (output / "dora-metrics.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    report = make_report(repository, period_start, period_end, metrics, source)
+    report = make_report(repository, period_start, period_end, metrics, source, closed_issues)
     (output / "weekly-report.md").write_text(report, encoding="utf-8")
-    dashboard = make_dashboard(repository, period_start, period_end, metrics, source)
+    dashboard = make_dashboard(repository, period_start, period_end, metrics, source, closed_issues)
     (output / "dora-dashboard.html").write_text(dashboard, encoding="utf-8")
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")

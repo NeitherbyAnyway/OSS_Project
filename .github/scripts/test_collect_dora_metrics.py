@@ -20,6 +20,24 @@ class CalculateMetricsTests(unittest.TestCase):
         self.assertIn("N/A", report)
         self.assertIn("N/A", dashboard)
 
+    def test_report_and_dashboard_include_chart_and_weekly_throughput(self):
+        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 1, 8, tzinfo=timezone.utc)
+        metrics = {
+            "deployment_frequency": {"value": 1},
+            "lead_time_for_changes": {"value_minutes": 5.62, "measured_deployments": 1},
+            "change_failure_rate": {"value_percent": 0, "failed_deployments": 0, "completed_deployments": 1},
+            "mttr": {"value_minutes": None, "recovered_incidents": 0, "open_incidents": 0},
+        }
+
+        report = make_report("owner/repo", start, end, metrics, "github_releases_proxy")
+        dashboard = make_dashboard("owner/repo", start, end, metrics, "github_releases_proxy")
+
+        self.assertIn("## Weekly Throughput", report)
+        self.assertIn("Closed issues", report)
+        self.assertIn("Chart", dashboard)
+        self.assertIn("new Chart", dashboard)
+
     def test_calculates_all_four_metrics(self):
         start = datetime(2026, 1, 1, tzinfo=timezone.utc)
         end = datetime(2026, 1, 8, tzinfo=timezone.utc)
