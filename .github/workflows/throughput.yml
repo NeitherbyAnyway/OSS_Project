@@ -11,31 +11,29 @@ permissions:
 
 jobs:
   calculate-throughput:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Calculate weekly throughput
         env:
             GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          set -euo pipefail
+          $now = [DateTime]::UtcNow
+          $endDate = $now.ToString('yyyy-MM-dd')
+          $startDate = $now.AddDays(-7).ToString('yyyy-MM-dd')
 
-          end_date="$(date -u +%Y-%m-%d)"
-          start_date="$(date -u -d '7 days ago' +%Y-%m-%d)"
-          repository="${{ github.repository }}"
+          $closedIssues = gh issue list `
+            --repo $env:GITHUB_REPOSITORY `
+            --state closed `
+            --search "closed:>=$startDate" `
+            --limit 1000 `
+            --json number,title,closedAt `
+            --jq 'length'
 
-          closed_issues="$(gh issue list \
-            --repo "$repository" \
-            --state closed \
-            --search "closed:>=$start_date" \
-            --limit 1000 \
-            --json number,title,closedAt \
-            --jq 'length')"
+          @(
+            '# Weekly Throughput'
+            ''
+            "- Period: **$startDate** to **$endDate** (UTC)"
+            "- Closed issues: **$closedIssues**"
+          ) | Add-Content -Path $env:GITHUB_STEP_SUMMARY
 
-          {
-            echo "# Weekly Throughput"
-            echo
-            echo "- Period: **$start_date** to **$end_date** (UTC)"
-            echo "- Closed issues: **$closed_issues**"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          echo "Weekly throughput: $closed_issues closed issues ($start_date to $end_date UTC)"
+          Write-Output "Weekly throughput: $closedIssues closed issues ($startDate to $endDate UTC)"
