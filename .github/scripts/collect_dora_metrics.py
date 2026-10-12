@@ -6,7 +6,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
 
 
@@ -104,6 +104,78 @@ def calculate_metrics(records, period_start, period_end):
     }
 
 
+def calculate_release_proxy_metrics(releases, incidents, period_start, period_end):
+    period_releases = [
+        release
+        for release in releases
+        if period_start <= parse_time(release["published_at"]) < period_end
+    ]
+    release_tags = {release["tag_name"] for release in period_releases}
+    leads_minutes = []
+    for release in period_releases:
+        if release.get("commit_date"):
+            lead_minutes = (
+                parse_time(release["published_at"]) - parse_time(release["commit_date"])
+            ).total_seconds() / 60
+            if lead_minutes >= 0:
+                leads_minutes.append(lead_minutes)
+
+    failed_release_tags = set()
+    unlinked_failures = 0
+    recovery_minutes = []
+    open_incidents = 0
+    for incident in incidents:
+        labels = {label["name"] for label in incident.get("labels", [])}
+        if "dora-failure" not in labels:
+            continue
+
+        linked_tags = {
+            label.removeprefix("release:")
+            for label in labels
+            if label.startswith("release:")
+        }
+        if not linked_tags:
+            unlinked_failures += 1
+        failed_release_tags.update(linked_tags & release_tags)
+
+        created_at = parse_time(incident["created_at"])
+        closed_at = parse_time(incident["closed_at"]) if incident.get("closed_at") else None
+        if closed_at and period_start <= closed_at < period_end:
+            recovery_minutes.append((closed_at - created_at).total_seconds() / 60)
+        elif not closed_at and period_start <= created_at < period_end:
+            open_incidents += 1
+
+    failure_rate = (
+        round(100 * len(failed_release_tags) / len(period_releases), 2)
+        if period_releases
+        else None
+    )
+    return {
+        "deployment_frequency": {
+            "value": len(period_releases),
+            "unit": "published releases/week (deployment proxy)",
+        },
+        "lead_time_for_changes": {
+            "value_minutes": average(leads_minutes),
+            "unit": "minutes",
+            "measured_deployments": len(leads_minutes),
+        },
+        "change_failure_rate": {
+            "value_percent": failure_rate,
+            "unit": "percent",
+            "failed_deployments": len(failed_release_tags),
+            "completed_deployments": len(period_releases),
+            "unlinked_failure_issues": unlinked_failures,
+        },
+        "mttr": {
+            "value_minutes": average(recovery_minutes),
+            "unit": "minutes",
+            "recovered_incidents": len(recovery_minutes),
+            "open_incidents": open_incidents,
+        },
+    }
+
+
 def api_request(url, token):
     request = Request(
         url,
@@ -162,11 +234,36 @@ def collect_records(api_url, repository, token, cutoff):
     return records
 
 
+def collect_release_proxy_data(api_url, repository, token, period_start, period_end):
+    releases = []
+    for release in iter_api_items(api_url, repository, "releases", token):
+        published_at = release.get("published_at")
+        if release.get("draft") or not published_at:
+            continue
+        if not period_start <= parse_time(published_at) < period_end:
+            continue
+        sha = quote(release["tag_name"], safe="")
+        commit_date = get_commit_date(api_url, repository, sha, token)
+        releases.append(
+            {
+                "tag_name": release["tag_name"],
+                "published_at": published_at,
+                "commit_date": commit_date,
+            }
+        )
+
+    incidents = []
+    for issue in iter_api_items(api_url, repository, "issues?state=all", token):
+        if "pull_request" not in issue:
+            incidents.append(issue)
+    return releases, incidents
+
+
 def display(value, suffix=""):
     return "N/A" if value is None else f"{value:g}{suffix}"
 
 
-def make_report(repository, period_start, period_end, metrics):
+def make_report(repository, period_start, period_end, metrics, source):
     lead = metrics["lead_time_for_changes"]
     failure = metrics["change_failure_rate"]
     mttr = metrics["mttr"]
@@ -186,17 +283,18 @@ def make_report(repository, period_start, period_end, metrics):
             "",
             "## Calculation rules",
             "",
-            "- Deployment frequency counts deployments created in the period whose latest status is `success`.",
-            "- Lead time is the deployed commit's committer timestamp to its successful deployment status.",
-            "- Change failure rate is failed or errored deployments divided by completed deployments in the period.",
-            "- MTTR is the average time from a `failure`/`error` status to the next `success` status in the same environment. Recovery context is limited to 30 days.",
+            "- Metric source: GitHub Deployments API." if source == "github_deployments" else "- Metric source: GitHub Releases and labeled Issues (explicit deployment proxy).",
+            "- Deployment frequency counts deployments created in the period whose latest status is `success`." if source == "github_deployments" else "- Deployment frequency counts published releases in the period as deployment proxies.",
+            "- Lead time is the deployed commit's committer timestamp to its successful deployment status." if source == "github_deployments" else "- Lead time is the release tag commit's committer timestamp to its publication time.",
+            "- Change failure rate is failed or errored deployments divided by completed deployments in the period." if source == "github_deployments" else "- Change failure rate is unique releases linked to `dora-failure` Issues divided by published releases. Label each incident `release:<tag>`.",
+            "- MTTR is the average time from a `failure`/`error` status to the next `success` status in the same environment. Recovery context is limited to 30 days." if source == "github_deployments" else "- MTTR is the average time from a `dora-failure` Issue's creation to closure; open incidents created in the period are counted separately.",
             "- Metrics without eligible deployment data are reported as `N/A`; these are deployment-based measures, not issue-based proxies.",
             "",
         ]
     )
 
 
-def make_dashboard(repository, period_start, period_end, metrics):
+def make_dashboard(repository, period_start, period_end, metrics, source):
     lead = metrics["lead_time_for_changes"]
     failure = metrics["change_failure_rate"]
     mttr = metrics["mttr"]
@@ -234,7 +332,7 @@ def make_dashboard(repository, period_start, period_end, metrics):
 <body>
   <header><h1>Weekly DORA Metrics</h1><p>{html.escape(repository)} · {period_start:%Y-%m-%d} to {period_end:%Y-%m-%d} UTC</p></header>
   <main>{card_html}</main>
-  <footer>Deployment-based measurements. Lead time uses deployed commit time; failure rate uses completed deployments; MTTR pairs failure/error with the next success in the same environment. No eligible data is shown as N/A.</footer>
+    <footer>{'GitHub Deployments API measurements.' if source == 'github_deployments' else 'Release-based deployment proxy. Record incidents as Issues labeled dora-failure and release:&lt;tag&gt;.'} Lead time is commit-to-release/deployment. No eligible data is shown as N/A.</footer>
 </body>
 </html>
 """
@@ -250,21 +348,30 @@ def main():
     period_end = datetime.now(timezone.utc)
     period_start = period_end - timedelta(days=7)
     records = collect_records(api_url, repository, token, period_start - RECOVERY_CONTEXT)
-    metrics = calculate_metrics(records, period_start, period_end)
+    if records:
+        source = "github_deployments"
+        metrics = calculate_metrics(records, period_start, period_end)
+    else:
+        source = "github_releases_proxy"
+        releases, incidents = collect_release_proxy_data(
+            api_url, repository, token, period_start, period_end
+        )
+        metrics = calculate_release_proxy_metrics(releases, incidents, period_start, period_end)
     output = Path("reports")
     output.mkdir(parents=True, exist_ok=True)
 
     data = {
         "schema_version": 1,
         "repository": repository,
+        "data_source": source,
         "generated_at": period_end.isoformat(),
         "period": {"start": period_start.isoformat(), "end": period_end.isoformat()},
         "metrics": metrics,
     }
     (output / "dora-metrics.json").write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    report = make_report(repository, period_start, period_end, metrics)
+    report = make_report(repository, period_start, period_end, metrics, source)
     (output / "weekly-report.md").write_text(report, encoding="utf-8")
-    dashboard = make_dashboard(repository, period_start, period_end, metrics)
+    dashboard = make_dashboard(repository, period_start, period_end, metrics, source)
     (output / "dora-dashboard.html").write_text(dashboard, encoding="utf-8")
 
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
