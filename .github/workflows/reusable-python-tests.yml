@@ -1,0 +1,34 @@
+name: Reusable Python tests
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: GitHub Actions runner label
+        required: true
+        type: string
+      python-version:
+        description: Python version used for the tests
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: ./.github/actions/setup-python
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      - name: Run DORA metrics tests
+        run: python -B .github/scripts/test_collect_dora_metrics.py
+
+      - name: Run community support tests
+        run: python -B .github/scripts/test_community_support.py

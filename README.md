@@ -91,7 +91,9 @@
 
 ## CI/CD 및 GitHub Pages 배포
 
-`.github/workflows/ci-cd.yml`은 pull request와 `main` 브랜치 push에서 실행됩니다. Build 단계에서 Python 스크립트를 lint하고 Pages 사이트를 아티팩트로 업로드한 뒤, Test 단계에서 Python 3.11/3.12와 Ubuntu/Windows 조합으로 기존 테스트를 실행합니다. 모든 검사가 통과한 `main` 변경만 Deploy 단계에서 아티팩트를 다운로드해 GitHub Pages에 배포합니다. `workflow_dispatch`로도 실행할 수 있습니다.
+`.github/workflows/ci-cd.yml`은 pull request와 `main` 브랜치 push에서 실행됩니다. Build 단계에서는 Python 스크립트를 lint하고 Pages 사이트를 아티팩트로 업로드합니다. Test 단계는 [재사용 워크플로](.github/workflows/reusable-python-tests.yml)로 분리되어 Python 3.11/3.12/3.13과 Ubuntu/Windows 조합에서 실행됩니다. Python 설정 및 선택적 pip 캐시는 [Composite Action](.github/actions/setup-python/action.yml)으로 공통화했습니다.
+
+개발 의존성은 [`requirements-dev.txt`](requirements-dev.txt)에 고정하고 Build 단계에서 pip 캐시를 사용합니다. cache hit 여부와 의존성 설치 시간은 Actions 실행 요약에 기록됩니다. 선택적 배포를 위해 변경 파일을 검사하며 `site/` 또는 `docs/dora-dashboard.png`가 바뀐 `main` push만 Pages에 배포합니다. Pull request에서는 배포하지 않으며, `main`에서 `workflow_dispatch`로 수동 배포할 수도 있습니다.
 
 Pages를 처음 사용할 때는 저장소의 **Settings > Pages > Build and deployment**에서 Source를 **GitHub Actions**로 설정합니다. 배포에는 `GITHUB_TOKEN`을 `${{ secrets.GITHUB_TOKEN }}`으로 전달하고 배포 작업에 필요한 `pages: write`, `id-token: write` 권한만 부여하므로 별도의 개인 액세스 토큰이나 저장소 Secret 설정은 필요하지 않습니다.
 
