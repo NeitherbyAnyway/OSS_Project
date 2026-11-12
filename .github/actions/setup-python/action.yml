@@ -1,0 +1,27 @@
+name: Setup Python
+description: Set up a requested Python version with optional pip dependency caching
+
+inputs:
+  python-version:
+    description: Python version to install
+    required: true
+  cache-pip:
+    description: Cache pip dependencies using requirements-dev.txt
+    required: false
+    default: "false"
+
+outputs:
+  cache-hit:
+    description: Whether the pip dependency cache was restored
+    value: ${{ steps.setup.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      id: setup
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: ${{ inputs.cache-pip == 'true' && 'pip' || '' }}
+        cache-dependency-path: ${{ inputs.cache-pip == 'true' && 'requirements-dev.txt' || '' }}

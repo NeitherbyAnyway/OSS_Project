@@ -1,0 +1,2 @@
+# Pinned Python lint dependency used by the CI workflow.
+ruff==0.17.4
