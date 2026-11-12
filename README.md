@@ -99,6 +99,8 @@ Pages를 처음 사용할 때는 저장소의 **Settings > Pages > Build and dep
 
 배포되는 정적 사이트의 원본은 [`site/index.html`](site/index.html)입니다. PR에서는 빌드와 테스트만 수행하고, `main`에 반영된 경우에만 공개 배포합니다.
 
+실행 시간과 캐시 hit/miss를 비교한 측정 결과는 [Week 8 최적화 보고서](docs/week-eight-optimization-report.md)를 참고하세요.
+
 ## 결과물 활용
 
 - 수업 보고서 작성
