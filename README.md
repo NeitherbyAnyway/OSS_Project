@@ -104,6 +104,14 @@
 - [Architecture Decision Records](docs/adr/)
 - [Issue response and SLA](docs/community-support.md)
 
+## 저장소 참여 및 정책
+
+- [기여 가이드](CONTRIBUTING.md)
+- [행동 강령](CODE_OF_CONDUCT.md)
+- [MIT License](LICENSE)
+- [라이선스 비교 및 선정 근거](docs/license-selection.md)
+- [InnerSource 도입 로드맵](docs/inner-source-roadmap.md)
+
 ## 요약
 
 이 프로젝트는 단순히 코드만 작성하는 수준을 넘어서, GitHub 기반 협업 흐름과 자동화된 지표 생성까지 함께 다루는 실습 형태입니다. 저장소 안에서 자동으로 DORA 지표를 계산하고, 결과를 아티팩트와 대시보드 형태로 남기도록 구성한 것이 핵심입니다.
