@@ -1,0 +1,64 @@
+name: Community Support
+
+on:
+  issues:
+    types: [opened]
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  acknowledge-issue:
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Post an issue acknowledgment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          SLA_HOURS: '48'
+        run: python .github/scripts/community_support.py acknowledge --issue ${{ github.event.issue.number }}
+
+  weekly-sla-report:
+    if: github.event_name != 'issues'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Generate the weekly response SLA report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_API_URL: ${{ github.api_url }}
+          SLA_HOURS: '48'
+        run: python .github/scripts/community_support.py weekly-report
+
+      - name: Upload the SLA report
+        uses: actions/upload-artifact@v4
+        with:
+          name: community-support-sla-report
+          path: reports/community-sla-weekly.md
+          if-no-files-found: error
