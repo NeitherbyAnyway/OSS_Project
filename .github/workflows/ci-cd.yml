@@ -39,7 +39,7 @@ jobs:
             echo "### Dependency cache measurement"
             echo "- Pip cache hit: ${{ steps.setup-python.outputs.cache-hit }}"
             echo "- Dependency install: ${elapsed_ms} ms"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Lint Python scripts
         run: ruff check --select E4,E7,E9,F --ignore F401,F841 .github/scripts
