@@ -91,7 +91,7 @@
 
 ## CI/CD 및 GitHub Pages 배포
 
-`.github/workflows/ci-cd.yml`은 pull request와 `main` 브랜치 push에서 실행됩니다. Build 단계에서는 Python 스크립트를 lint하고 Pages 사이트를 아티팩트로 업로드합니다. Test 단계는 [재사용 워크플로](.github/workflows/reusable-python-tests.yml)로 분리되어 Python 3.11/3.12/3.13과 Ubuntu/Windows 조합에서 실행됩니다. Python 설정 및 선택적 pip 캐시는 [Composite Action](.github/actions/setup-python/action.yml)으로 공통화했습니다.
+`.github/workflows/ci-cd.yml`은 pull request와 `main` 브랜치 push에서 실행됩니다. Build와 Test는 서로 의존하지 않으므로 병렬 실행하고, Deploy는 Build·Test 성공과 변경 파일 조건을 모두 기다립니다. Build는 Python 스크립트를 lint하고 Pages 사이트를 아티팩트로 업로드합니다. Test는 [재사용 워크플로](.github/workflows/reusable-python-tests.yml)로 분리되어 Python 3.11/3.12/3.13과 Ubuntu/Windows 조합에서 실행됩니다. Python 설정 및 선택적 pip 캐시는 [Composite Action](.github/actions/setup-python/action.yml)으로 공통화했습니다.
 
 개발 의존성은 [`requirements-dev.txt`](requirements-dev.txt)에 고정하고 Build 단계에서 pip 캐시를 사용합니다. cache hit 여부와 의존성 설치 시간은 Actions 실행 요약에 기록됩니다. 선택적 배포를 위해 변경 파일을 검사하며 `site/` 또는 `docs/dora-dashboard.png`가 바뀐 `main` push만 Pages에 배포합니다. Pull request에서는 배포하지 않으며, `main`에서 `workflow_dispatch`로 수동 배포할 수도 있습니다.
 
