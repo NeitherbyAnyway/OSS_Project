@@ -96,6 +96,14 @@
 - DORA 개념 이해 및 비교 분석
 - 운영 지표 관찰 및 팀 성과 해석
 
+## 비동기 협업 문서
+
+- [Getting Started](https://github.com/NeitherbyAnyway/OSS_Project/wiki/Getting-Started)
+- [Development Guide](https://github.com/NeitherbyAnyway/OSS_Project/wiki/Development-Guide)
+- [Troubleshooting](https://github.com/NeitherbyAnyway/OSS_Project/wiki/Troubleshooting)
+- [Architecture Decision Records](docs/adr/)
+- [Issue response and SLA](docs/community-support.md)
+
 ## 요약
 
 이 프로젝트는 단순히 코드만 작성하는 수준을 넘어서, GitHub 기반 협업 흐름과 자동화된 지표 생성까지 함께 다루는 실습 형태입니다. 저장소 안에서 자동으로 DORA 지표를 계산하고, 결과를 아티팩트와 대시보드 형태로 남기도록 구성한 것이 핵심입니다.
