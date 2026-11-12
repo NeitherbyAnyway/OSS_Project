@@ -89,6 +89,14 @@
 4. `Run workflow` 버튼을 클릭하여 수동 실행하거나, 일정에 따라 자동 실행됩니다.
 5. 실행 완료 후 `weekly-dora-report` 아티팩트를 다운로드하여 결과를 확인합니다.
 
+## CI/CD 및 GitHub Pages 배포
+
+`.github/workflows/ci-cd.yml`은 pull request와 `main` 브랜치 push에서 실행됩니다. Build 단계에서 Python 스크립트를 lint하고 Pages 사이트를 아티팩트로 업로드한 뒤, Test 단계에서 Python 3.11/3.12와 Ubuntu/Windows 조합으로 기존 테스트를 실행합니다. 모든 검사가 통과한 `main` 변경만 Deploy 단계에서 아티팩트를 다운로드해 GitHub Pages에 배포합니다. `workflow_dispatch`로도 실행할 수 있습니다.
+
+Pages를 처음 사용할 때는 저장소의 **Settings > Pages > Build and deployment**에서 Source를 **GitHub Actions**로 설정합니다. 배포에는 `GITHUB_TOKEN`을 `${{ secrets.GITHUB_TOKEN }}`으로 전달하고 배포 작업에 필요한 `pages: write`, `id-token: write` 권한만 부여하므로 별도의 개인 액세스 토큰이나 저장소 Secret 설정은 필요하지 않습니다.
+
+배포되는 정적 사이트의 원본은 [`site/index.html`](site/index.html)입니다. PR에서는 빌드와 테스트만 수행하고, `main`에 반영된 경우에만 공개 배포합니다.
+
 ## 결과물 활용
 
 - 수업 보고서 작성
